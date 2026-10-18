@@ -1,0 +1,10 @@
+node_modules/
+session/
+auth_info/
+.qr/
+.env
+*.log
+.DS_Store
+temp/
+package-lock.json
+auth/
