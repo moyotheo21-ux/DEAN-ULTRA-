@@ -1,6 +1,6 @@
 module.exports = {
   BOT_NAME: "DEAN-ULTRA",
-  VERSION: "4.9.13",
+  VERSION: "1.0.0",
   PLATFORM: "Panel",
   OWNER_NAME: process.env.OWNER_NAME || "Theo",
 
