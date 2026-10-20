@@ -122,14 +122,19 @@ await importSessionId(envSid);
     }
     if(u.connection==='close' && u.lastDisconnect?.error?.output?.statusCode!==DisconnectReason.loggedOut) startBot();
   });
-    sock.ev.on('messages.upsert', async ({messages})=>{
+       sock.ev.on('messages.upsert', async ({type, messages})=>{
+    if(type !== "notify") return;
     const m=messages[0];
     if(!m) return;
     if(!m.message) return;
-    if(m.key.fromMe) return;
+    const bodyCheck = m.message.conversation||m.message.extendedTextMessage?.text||m.message.imageMessage?.caption||"";
+    // === LOOP FIX - blocks bot replying to its own output ===
+    if(m.key.fromMe && (bodyCheck.startsWith("*ADMINS -") || bodyCheck.startsWith("ℹ️ GROUP STAFF") || bodyCheck.startsWith("📢 Attention") || bodyCheck.startsWith("ADMINS - My accounts"))) return;
     if(processedCache.has(m.key.id)) return;
     processedCache.add(m.key.id);
     setTimeout(()=> processedCache.delete(m.key.id), 8000);
+       const senderId = m.key.participant || m.key.remoteJid
+    const isOwner = m.key.fromMe || senderId.includes('26775')
 await sock.readMessages([m.key]).catch(()=>{});
     const from=m.key.remoteJid;
     const isGroup = from.endsWith('@g.us');
@@ -391,8 +396,12 @@ _By DEAN-ULTRA_ 👑`;
         if(cover){ try{ return await sock.sendMessage(from,{ image: { url: cover }, caption: text },{quoted:m}); } catch{ return await sock.sendMessage(from,{text},{quoted:m}); } } else { return await sock.sendMessage(from,{text},{quoted:m}); }
       }catch(e){ console.log("FIND CRASH", e.message); return await sock.sendMessage(from,{text:`_Find failed: ${e.message.slice(0,80)}_`},{quoted:m}); }
     }
-    if(cmd==="setprefix"){ PREFIX = query.trim() || PREFIX; return await sock.sendMessage(from,{text:`✅ Prefix: [ ${PREFIX} ]`},{quoted:m}); }
-    if(cmd==="mode"){
+       if(cmd==="setprefix"){ 
+      if(!isOwner) return await sock.sendMessage(from,{text:"❌ Owner command only"},{quoted:m});
+      PREFIX = query.trim() || PREFIX; 
+      return await sock.sendMessage(from,{text:`✅ Prefix: [ ${PREFIX} ]`},{quoted:m}); 
+    }
+    if(cmd==="mode"){if(!isOwner) return await sock.sendMessage(from,{text:"❌ Owner command only"},{quoted:m});
       if(!query){ return await sock.sendMessage(from,{text:`Current: ${MODE}`},{quoted:m}); }
       MODE = query.trim().toLowerCase();
       try{ fs.mkdirSync('./data',{recursive:true}); let s={}; try{ s=JSON.parse(fs.readFileSync('./data/settings.json','utf8')); }catch(e){} s.mode=MODE; fs.writeFileSync('./data/settings.json', JSON.stringify(s, null, 2)); }catch(e){}
@@ -448,16 +457,22 @@ _By DEAN-ULTRA_ 👑`;
     }
 if(cmd==="link" || cmd==="grouplink" || cmd==="invite"){
   try{
-    const code = await sock.groupInviteCode(from);
+    if(!from.endsWith('@g.us')) return await sock.sendMessage(from,{text:'❌ Group only'},{quoted:m});
     const gmeta = await sock.groupMetadata(from);
+    const sender = m.key.participant || from;
+    const isBotAdmin = gmeta.participants.find(p=>p.id===sock.user.id)?.admin;
+    const isSenderAdmin = gmeta.participants.find(p=>p.id===sender)?.admin;
+    if(!isSenderAdmin && !isOwner) return await sock.sendMessage(from,{text:'❌ Admin only command'},{quoted:m});
+    if(!isBotAdmin) return await sock.sendMessage(from,{text:'❌ Bot needs to be admin'},{quoted:m});
+    const code = await sock.groupInviteCode(from);
     const gname = gmeta.subject;
-    return await sock.sendMessage(from,{
-      text:`🔗 *GROUP INVITE LINK*\n\n📱 Group: ${gname}\n🔗 Link: https://chat.whatsapp.com/${code}`
-    });
+    return await sock.sendMessage(from,{text:`🔗 *GROUP INVITE LINK*\n\n📱 Group: ${gname}\n🔗 Link: https://chat.whatsapp.com/${code}`},{quoted:m});
   }catch(e){
-    return await sock.sendMessage(from,{text:`❌ Failed: ${e.message}`});
+    return await sock.sendMessage(from,{text:`❌ Failed: ${e.message}`},{quoted:m});
   }
 }
+
+    // approveall + rejectall - FINAL WORKING - no admin check
      // approveall + rejectall - FINAL WORKING - no admin check
 if(["approveall","approve","rejectall","reject","rall","aall"].includes(cmd)){
   const action = (cmd.includes("reject") || cmd==="rall") ? "reject" : "approve";
@@ -624,7 +639,7 @@ if(cmd==="play"||cmd==="song"){
         console.log("VIDEO ERROR:", e.response?.data || e.message);
         return await sock.sendMessage(from,{text:"Video Error: "+ (e.response?.data?.message || e.message)},{quoted:m}); 
       }
-    }
+     }          
   });
   }    
 startBot();
